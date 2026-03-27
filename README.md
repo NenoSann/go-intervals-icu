@@ -61,9 +61,7 @@ func main() {
 
 - `Client.GetAthleteInfo(ctx)`
 - `Client.UpdateAthleteInfo(ctx, body)`
-
-你可以继续按需添加更多封装在 `convenience.go`。
-
+- 
 ## 重新生成
 
 当 `openapi-spec.json` 更新后，执行：
@@ -76,6 +74,26 @@ go run ./cmd/gen
 
 - `types_gen.go`
 - `client_gen.go`
+
+## 测试
+
+集成测试需要 `.env`：
+
+```bash
+cp .env.example .env
+```
+
+填写以下变量后运行：
+
+```bash
+go test ./...
+```
+
+需要的变量：
+
+- `INTERVALS_API_KEY`
+- `INTERVALS_ATHLETE_ID`
+- `INTERVALS_BASE_URL`（可选）
 
 ## 认证方式
 
