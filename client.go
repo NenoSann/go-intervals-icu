@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -136,6 +138,140 @@ func (c *Client) do(ctx context.Context, method, path string, pathParams map[str
 		}
 		return fmt.Errorf("decode response: %w", err)
 	}
+	return nil
+}
+
+// doMultipart executes an HTTP request using multipart/form-data body.
+func (c *Client) doMultipart(ctx context.Context, method, path string, pathParams map[string]string, query url.Values, body any, out any) error {
+	if c == nil {
+		return fmt.Errorf("client is nil")
+	}
+	resolvedPath := path
+	for key, value := range pathParams {
+		resolvedPath = strings.ReplaceAll(resolvedPath, "{"+key+"}", url.PathEscape(value))
+	}
+	endpoint := c.baseURL.ResolveReference(&url.URL{Path: resolvedPath})
+	if query != nil && len(query) > 0 {
+		endpoint.RawQuery = query.Encode()
+	}
+
+	multipartBody := &bytes.Buffer{}
+	writer := multipart.NewWriter(multipartBody)
+	if body != nil {
+		if err := writeMultipartBody(writer, body); err != nil {
+			return fmt.Errorf("build multipart body: %w", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("close multipart body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), multipartBody)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.SetBasicAuth("API_KEY", c.apiKey)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return &Error{StatusCode: resp.StatusCode, Body: string(payload)}
+	}
+
+	if out == nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(out); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return fmt.Errorf("decode response: %w", err)
+	}
+	return nil
+}
+
+func writeMultipartBody(writer *multipart.Writer, body any) error {
+	if writer == nil {
+		return fmt.Errorf("multipart writer is nil")
+	}
+	if body == nil {
+		return nil
+	}
+
+	v := reflect.ValueOf(body)
+	for v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return fmt.Errorf("multipart body must be struct or struct pointer")
+	}
+
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		sf := t.Field(i)
+		if sf.PkgPath != "" { // unexported
+			continue
+		}
+
+		key := sf.Name
+		if tag := sf.Tag.Get("json"); tag != "" {
+			tagName := strings.Split(tag, ",")[0]
+			if tagName == "-" {
+				continue
+			}
+			if tagName != "" {
+				key = tagName
+			}
+		}
+
+		fv := v.Field(i)
+		if !fv.IsValid() {
+			continue
+		}
+		for fv.Kind() == reflect.Pointer {
+			if fv.IsNil() {
+				goto nextField
+			}
+			fv = fv.Elem()
+		}
+
+		switch fv.Kind() {
+		case reflect.Slice:
+			if fv.Type().Elem().Kind() == reflect.Uint8 {
+				fileWriter, err := writer.CreateFormFile(key, key+".bin")
+				if err != nil {
+					return err
+				}
+				if _, err := fileWriter.Write(fv.Bytes()); err != nil {
+					return err
+				}
+				goto nextField
+			}
+			if err := writer.WriteField(key, fmt.Sprint(fv.Interface())); err != nil {
+				return err
+			}
+		default:
+			if err := writer.WriteField(key, fmt.Sprint(fv.Interface())); err != nil {
+				return err
+			}
+		}
+
+	nextField:
+	}
+
 	return nil
 }
 

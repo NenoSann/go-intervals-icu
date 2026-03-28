@@ -492,13 +492,71 @@ func (op operationEntry) requestSchema() (Schema, bool) {
 	if len(content) == 0 {
 		return Schema{}, false
 	}
+	if op.prefersMultipartRequest() {
+		if mt, ok := content["multipart/form-data"]; ok && !isEmptySchema(mt.Schema) {
+			return mt.Schema, true
+		}
+		if mt, ok := content["application/json"]; ok {
+			return mt.Schema, true
+		}
+	}
 	if mt, ok := content["application/json"]; ok {
+		return mt.Schema, true
+	}
+	if mt, ok := content["multipart/form-data"]; ok && !isEmptySchema(mt.Schema) {
 		return mt.Schema, true
 	}
 	for _, mt := range content {
 		return mt.Schema, true
 	}
 	return Schema{}, false
+}
+
+func (op operationEntry) prefersMultipartRequest() bool {
+	if op.Op.RequestBody == nil || len(op.Op.RequestBody.Content) == 0 {
+		return false
+	}
+	if _, ok := op.Op.RequestBody.Content["multipart/form-data"]; ok {
+		return true
+	}
+	if mt, ok := op.Op.RequestBody.Content["application/json"]; ok {
+		return schemaHasBinaryField(mt.Schema)
+	}
+	for _, mt := range op.Op.RequestBody.Content {
+		if schemaHasBinaryField(mt.Schema) {
+			return true
+		}
+	}
+	return false
+}
+
+func isEmptySchema(schema Schema) bool {
+	return schema.Ref == "" &&
+		schema.Type == "" &&
+		schema.Format == "" &&
+		len(schema.Properties) == 0 &&
+		schema.Items == nil &&
+		schema.AdditionalProperties == nil &&
+		len(schema.Required) == 0 &&
+		len(schema.Enum) == 0
+}
+
+func schemaHasBinaryField(schema Schema) bool {
+	if schema.Format == "binary" || schema.Format == "byte" {
+		return true
+	}
+	if schema.Items != nil && schemaHasBinaryField(*schema.Items) {
+		return true
+	}
+	if schema.AdditionalProperties != nil && schemaHasBinaryField(*schema.AdditionalProperties) {
+		return true
+	}
+	for _, prop := range schema.Properties {
+		if schemaHasBinaryField(prop) {
+			return true
+		}
+	}
+	return false
 }
 
 func (op operationEntry) responseSchema() (Schema, bool) {
@@ -623,7 +681,11 @@ func (g *Generator) renderOperation(op operationEntry) string {
 	}
 
 	buf.WriteString(fmt.Sprintf("\tvar out %sResult\n", op.GoName))
-	buf.WriteString(fmt.Sprintf("\tif err := c.do(ctx, \"%s\", \"%s\", pathParams, query, %s, &out); err != nil {\n", op.Method, op.Path, bodyExpr))
+	if op.prefersMultipartRequest() {
+		buf.WriteString(fmt.Sprintf("\tif err := c.doMultipart(ctx, \"%s\", \"%s\", pathParams, query, %s, &out); err != nil {\n", op.Method, op.Path, bodyExpr))
+	} else {
+		buf.WriteString(fmt.Sprintf("\tif err := c.do(ctx, \"%s\", \"%s\", pathParams, query, %s, &out); err != nil {\n", op.Method, op.Path, bodyExpr))
+	}
 	buf.WriteString("\t\treturn nil, err\n\t}\n")
 	buf.WriteString("\treturn &out, nil\n")
 	buf.WriteString("}\n")
