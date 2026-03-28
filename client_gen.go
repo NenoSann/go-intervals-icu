@@ -1672,7 +1672,7 @@ func (c *Client) ImportWorkoutFile(ctx context.Context, params ImportWorkoutFile
 	}
 	query.Set("type", fmt.Sprint(params.Type))
 	var out ImportWorkoutFileResult
-	if err := c.do(ctx, "POST", "/api/v1/athlete/{id}/folders/{folderId}/import-workout", pathParams, query, params.Body, &out); err != nil {
+	if err := c.doMultipart(ctx, "POST", "/api/v1/athlete/{id}/folders/{folderId}/import-workout", pathParams, query, params.Body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -2928,7 +2928,7 @@ func (c *Client) UpdateCustomItemImage(ctx context.Context, params UpdateCustomI
 	}
 	query := url.Values{}
 	var out UpdateCustomItemImageResult
-	if err := c.do(ctx, "POST", "/api/v1/athlete/{id}/custom-item/{itemId}/image", pathParams, query, params.Body, &out); err != nil {
+	if err := c.doMultipart(ctx, "POST", "/api/v1/athlete/{id}/custom-item/{itemId}/image", pathParams, query, params.Body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -3371,7 +3371,7 @@ func (c *Client) UploadActivity(ctx context.Context, params UploadActivityParams
 		query.Set("paired_event_id", fmt.Sprint(*params.PairedEventID))
 	}
 	var out UploadActivityResult
-	if err := c.do(ctx, "POST", "/api/v1/athlete/{id}/activities", pathParams, query, params.Body, &out); err != nil {
+	if err := c.doMultipart(ctx, "POST", "/api/v1/athlete/{id}/activities", pathParams, query, params.Body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -3390,7 +3390,7 @@ func (c *Client) UploadActivityStreamsCsv(ctx context.Context, params UploadActi
 	}
 	query := url.Values{}
 	var out UploadActivityStreamsCsvResult
-	if err := c.do(ctx, "PUT", "/api/v1/activity/{id}/streams.csv", pathParams, query, params.Body, &out); err != nil {
+	if err := c.doMultipart(ctx, "PUT", "/api/v1/activity/{id}/streams.csv", pathParams, query, params.Body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -3413,7 +3413,7 @@ func (c *Client) UploadWellness(ctx context.Context, params UploadWellnessParams
 		query.Set("ignoreMissingFields", fmt.Sprint(*params.IgnoreMissingFields))
 	}
 	var out UploadWellnessResult
-	if err := c.do(ctx, "POST", "/api/v1/athlete/{id}/wellness", pathParams, query, params.Body, &out); err != nil {
+	if err := c.doMultipart(ctx, "POST", "/api/v1/athlete/{id}/wellness", pathParams, query, params.Body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
